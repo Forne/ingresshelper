@@ -1,0 +1,4 @@
+{
+  "TelegramAPI": "Id:Key",
+  "Database": "user=postgres dbname=ingress sslmode=disable"
+}
