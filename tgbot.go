@@ -32,6 +32,7 @@ func main() {
 		db = db_init
 	}
 	db.LogMode(true)
+	db.AutoMigrate(&model.User{})
 
 	// Telegram init
 	if tg_init, tg_err := telebot.NewBot(config.TelegramAPI); tg_err != nil {
@@ -83,7 +84,7 @@ func srv_bot() {
 					tgbot.SendMessage(message.Chat, "Я не знаю где "+player,nil)
 				} else {
 					tgbot.SendMessage(message.Chat,
-						model.ActionToText(entity) + " " + timeago.Russian.Format(entity.Date) + ".",
+						model.ActionToText(entity) + " по адресу *" + entity.Portal1.Address + "* " + timeago.Russian.Format(entity.Date) + ".",
 						&telebot.SendOptions{ParseMode: telebot.ModeMarkdown, DisableWebPagePreview: true})
 				}
 				actions[thash] = ""
@@ -115,7 +116,7 @@ func srv_bot() {
 			}
 		} else if (strings.HasPrefix(cmd, "/subs") || strings.HasPrefix(strings.ToLower(cmd), "бот подписки")) {
 			var subs []model.Subscription
-			db.Where("fid = ? and ftype = ?", message.Chat.ID, message.Chat.Type).Order("fval desc").Find(&subs)
+			db.Where("tg_id = ? and tg_type = ?", message.Chat.ID, message.Chat.Type).Order("value desc").Find(&subs)
 			if len(subs) == 0 {
 				tgbot.SendMessage(message.Chat, "У вас нет подписок :(",nil)
 			} else {
@@ -156,7 +157,7 @@ func srv_bot() {
 				var sub int64
 				sub, _ = strconv.ParseInt(w[0], 10, 64)
 				var follow model.Subscription
-				res := db.Where("id = ? and fid = ? and ftype = ?", sub, message.Chat.ID, message.Chat.Type).Limit(1).First(&follow)
+				res := db.Where("id = ? and tg_id = ? and tg_type = ?", sub, message.Chat.ID, message.Chat.Type).Limit(1).First(&follow)
 				if res.RecordNotFound() == true {
 					tgbot.SendMessage(message.Chat, "Я не вижу подписку с таким номером \"" + w[0] + "\". Узнайте ваши подписки командой /subs.",nil)
 				} else {
