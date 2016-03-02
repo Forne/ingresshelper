@@ -22,16 +22,16 @@ type ActionEntity struct {
 	Team       int64        `json:"team"`
 	Action     string       `json:"action"`
 	ObjectType string       `json:"objectType"`
-	Portal1	   PortalEntity
+	Portal1	   PortalEntity `sql:"type:uuid"`
 	P1Data     jsonb.JSONRaw `sql:"type:jsonb"`
-	Portal2	   PortalEntity
+	Portal2	   PortalEntity  `sql:"type:uuid"`
 	P2Data     jsonb.JSONRaw `sql:"type:jsonb"`
 	Extra      string       `json:"extra"`
 	Geohash    string
 }
 
 type PortalEntity struct {
-	Name   string    `json:"name"`
+	Name    string    `json:"name"`
 	Team    string
 	LatE6   float64   `json:"latE6"`
 	LngE6   float64   `json:"lngE6"`
@@ -42,7 +42,7 @@ type PortalEntity struct {
 
 type Portal struct {
 	Guid	uuid.UUID `gorm:"primary_key" sql:"type:uuid"`
-	Title   string    `json:"name"`
+	Title   string
 	Team    string
 	LatE6   float64   `json:"latE6"`
 	LngE6   float64   `json:"lngE6"`
@@ -57,8 +57,8 @@ type Portal struct {
 	Mission bool
 	Mission50plus bool
 	Timestamp int64
-	Plain   string    `json:"plain"`
-	Address string    `json:"address"`
+	Plain   string
+	Address string
 	Geohash string
 }
 
@@ -75,12 +75,33 @@ type Mod struct {
 }
 
 type Subscription struct {
-	Id        int64	  `gorm:"primary_key"`
+	ID        uint `gorm:"primary_key"`
 	Tg_id     int64
 	Tg_type   string
 	Type      string
 	Value     string
 	Params    string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt *time.Time `sql:"index"`
+}
+
+/*type Chat struct {
+	ID        uint `gorm:"primary_key"`
+	Tg_cid    int64
+	Tg_ctype  string
+	Is_allow  bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt *time.Time `sql:"index"`
+}*/
+
+type User struct {
+	ID        uint `gorm:"primary_key"`
+	Tg_ID     int64
+	//Tg_Chat	  Chat
+	Is_admin  bool
+	Is_user   bool
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt *time.Time `sql:"index"`
@@ -128,7 +149,7 @@ func ActionToText(e ActionEntity) string {
 }
 
 // Portals
-func PortalLink(e Portal) string {
+func PortalLink(e PortalEntity) string {
 	// 59.409593,56.792797&z=17&pll=59.409593,56.792797
 	var text string = "["+e.Name + "](https://www.ingress.com/intel?ll=" + FloatToString(e.LatE6/1000000) + "," + FloatToString(e.LngE6/1000000) + "&z=16&pll=" + FloatToString(e.LatE6/1000000) + "," + FloatToString(e.LngE6/1000000) +")"
 	return text
