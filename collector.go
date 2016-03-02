@@ -144,26 +144,27 @@ func QueueActions(e model.ActionEntity)  {
 	e.Geohash = geohash.Encode(e.Portal1.LatE6/1000000, e.Portal1.LngE6/1000000)
 	e.Portal1.Geohash = geohash.Encode(e.Portal1.LatE6/1000000, e.Portal1.LngE6/1000000)
 	e.P1Data, _ = json.Marshal(e.Portal1)
-	fmt.Println("==========" + e.Portal2.Name)
-	//if e.Portal2.Name != "" {
-		//fmt.Println("e.Portal2 not nil, creating json:")
-		//fmt.Println(e.Portal2)
+	if e.Portal2.Name != "" {
 		e.Portal2.Geohash = geohash.Encode(e.Portal2.LatE6/1000000, e.Portal2.LngE6/1000000)
 		e.P2Data, _ = json.Marshal(e.Portal2)
-	//}
+	} else {
+		e.P2Data = []byte("{}")
+	}
 	res := db.Create(&e)
 	// Check for duplicates
 	if res.Error != nil {
-		fmt.Println("Double!") // DEBUG
+		//fmt.Println("Double!") // DEBUG
 	} else {
-		// Send alert for followers
-		var x[] model.Subscription
-		db.Where("? ~ followers.fval", e.Geohash).Find(&x)
-		// TODO: Check for duplicates alerts (eg. Jarvis viruses)
-		for _, q := range x {
-			tgchat := telebot.Chat{ID: q.Tg_id, Type: q.Tg_type}
-			tgbot.SendMessage(tgchat, model.ActionToText(e), &telebot.SendOptions{ParseMode: telebot.ModeHTML, DisableWebPagePreview: true})
+		if (e.ObjectType == "field" && e.Extra > 500) {
+			var x[] model.Subscription
+			db.Where("? ~ value", e.Geohash).Find(&x)
+			// TODO: Check for duplicates alerts (eg. Jarvis viruses)
+			for _, q := range x {
+				tgchat := telebot.Chat{ID: q.Tg_id, Type: q.Tg_type}
+				tgbot.SendMessage(tgchat, model.ActionToText(e), &telebot.SendOptions{ParseMode: telebot.ModeMarkdown, DisableWebPagePreview: true})
+			}
 		}
+
 	}
 }
 
@@ -174,9 +175,9 @@ func QueuePortal(e model.Portal)  {
 	res := db.Create(&e)
 	// Check for duplicates
 	if res.Error != nil {
-		fmt.Println("Double!") // DEBUG
+		//fmt.Println("Double!") // DEBUG
 	} else {
-		fmt.Println("Portal added!")
+		//fmt.Println("Portal added!")
 		// Send alert for followers
 	}
 }
