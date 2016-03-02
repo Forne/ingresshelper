@@ -8,7 +8,6 @@ import "github.com/TomiHiltunen/geohash-golang"
 import "net/http"
 import "fmt"
 import "os"
-import "strconv"
 import "encoding/json"
 import "./model"
 
@@ -30,6 +29,9 @@ func main() {
 	} else {
 		db = db_init
 	}
+	db.Exec("CREATE EXTENSION IF NOT EXISTS hstore")
+	db.AutoMigrate(&model.ChatEntity{}, &model.ActionEntity{}, &model.Portal{}, &model.Subscription{})
+	db.LogMode(true)
 
 	// Telegram init
 	if tg_init, tg_err := telebot.NewBot(config.TelegramAPI); tg_err != nil {
@@ -44,13 +46,12 @@ func main() {
 func srv_web() {
 	router := gin.Default()
 
-	/*db.CreateTable(&ChatEntity{})
-	db.CreateTable(&ActionEntity{})
-	db.CreateTable(&PortalEntity{})
-	db.CreateTable(&Follower{})*/
+	router.GET("/api/ping", func(c *gin.Context) {
+		c.String(http.StatusOK, "pong")
+	})
 
-	// Chat entity
-	/*router.POST("/api/log/chat", func(c *gin.Context) {
+	// Chat logger
+/*	router.POST("/api/log/chat", func(c *gin.Context) {
 		//tgchat := tgbot.Chat{ID: 69640640, Type: "private"}
 
 		content := []byte(c.PostForm("data"))
@@ -68,7 +69,7 @@ func srv_web() {
 		}
 	})*/
 
-	// Actions array {}
+	// Actions logger
 	router.POST("/api/log/act", func(c *gin.Context) {
 		content := []byte(c.PostForm("data"))
 		var action []model.ActionEntity
@@ -91,75 +92,91 @@ func srv_web() {
 			}
 		}
 	})
+
+	// Portals general logger
+	router.POST("/api/portals/push", func(c *gin.Context) {
+		content := []byte(c.PostForm("data"))
+		var portal model.Portal
+		er := json.Unmarshal(content, &portal)
+		if er != nil {
+			c.String(http.StatusOK, "error")
+			//panic(er) // TODO Log.txt
+		} else {
+			c.String(http.StatusOK, "ok")
+			res := db.Where("guid = ?", portal.Guid).First(&portal)
+			if res.RecordNotFound() == true {
+				go QueuePortal(portal)
+			} else {
+				//fmt.Println("Founded and skipped")
+			}
+			c.String(http.StatusOK, "ok")
+			//db.LogMode(false)
+		}
+	})
+
+	// Portals detalis logger
+/*	router.POST("/api/portals/details", func(c *gin.Context) {
+		content := []byte(c.PostForm("data"))
+		var action []model.ActionEntity
+		er := json.Unmarshal(content, &action)
+		if er != nil {
+			c.String(http.StatusOK, "error")
+			//panic(er) // TODO Log.txt
+		} else {
+			c.String(http.StatusOK, "ok")
+			for _, e := range action {
+				//db.LogMode(true)
+				res := db.Where("guid = ?", e.Guid).First(&e)
+				if res.RecordNotFound() == true {
+					go QueueActions(e)
+				} else {
+					//fmt.Println("Founded and skipped")
+				}
+				c.String(http.StatusOK, "ok")
+				//db.LogMode(false)
+			}
+		}
+	})*/
 	router.Run(":8080")
 }
 
 func QueueActions(e model.ActionEntity)  {
-	fmt.Println("RecordNotFound")
 	e.Geohash = geohash.Encode(e.Portal1.LatE6/1000000, e.Portal1.LngE6/1000000)
+	e.Portal1.Geohash = geohash.Encode(e.Portal1.LatE6/1000000, e.Portal1.LngE6/1000000)
+	e.P1Data, _ = json.Marshal(e.Portal1)
+	fmt.Println("==========" + e.Portal2.Name)
+	//if e.Portal2.Name != "" {
+		//fmt.Println("e.Portal2 not nil, creating json:")
+		//fmt.Println(e.Portal2)
+		e.Portal2.Geohash = geohash.Encode(e.Portal2.LatE6/1000000, e.Portal2.LngE6/1000000)
+		e.P2Data, _ = json.Marshal(e.Portal2)
+	//}
 	res := db.Create(&e)
 	// Check for duplicates
 	if res.Error != nil {
 		fmt.Println("Double!") // DEBUG
 	} else {
 		// Send alert for followers
-		var x[] model.Follower
+		var x[] model.Subscription
 		db.Where("? ~ followers.fval", e.Geohash).Find(&x)
 		// TODO: Check for duplicates alerts (eg. Jarvis viruses)
 		for _, q := range x {
-			tgchat := telebot.Chat{ID: q.Fid, Type: q.Ftype}
-			tgbot.SendMessage(tgchat, ActionToText(e), &telebot.SendOptions{ParseMode: telebot.ModeHTML, DisableWebPagePreview: true})
+			tgchat := telebot.Chat{ID: q.Tg_id, Type: q.Tg_type}
+			tgbot.SendMessage(tgchat, model.ActionToText(e), &telebot.SendOptions{ParseMode: telebot.ModeHTML, DisableWebPagePreview: true})
 		}
 	}
 }
 
-func ActionToText(e model.ActionEntity) string {
-	var text string
-	if (e.Team == 0) {
-		text = "Энлайт"
+func QueuePortal(e model.Portal)  {
+	e.Geohash = geohash.Encode(e.LatE6/1000000, e.LngE6/1000000)
+	e.ModData, _ = json.Marshal(e.Mods)
+	e.ResData, _ = json.Marshal(e.Resonators)
+	res := db.Create(&e)
+	// Check for duplicates
+	if res.Error != nil {
+		fmt.Println("Double!") // DEBUG
 	} else {
-		text = "Резист"
+		fmt.Println("Portal added!")
+		// Send alert for followers
 	}
-	text = text + " @"+e.Player
-	if (e.Action == "captured") {
-		text = text + " захватил портал " + PortalLink(e.Portal1)
-	}
-	if (e.Action == "create") {
-		if (e.ObjectType == "resonator") {
-			text = text + " вставил рез в " + PortalLink(e.Portal1)
-		}
-		if (e.ObjectType == "link") {
-			text = text + " создал линк " + PortalLink(e.Portal1) + " <-> " + PortalLink(e.Portal2)
-		}
-		if (e.ObjectType == "field") {
-			text = text + " создал поле @" + PortalLink(e.Portal1) + " +" + e.Extra + "MUs"
-		}
-		if (e.ObjectType == "fracker") {
-			text = text + " вставил фракер в " + PortalLink(e.Portal1)
-		}
-	}
-	if (e.Action == "destroy") {
-		if (e.ObjectType == "resonator") {
-			text = text + " сломал рез в " + PortalLink(e.Portal1)
-		}
-		if (e.ObjectType == "link") {
-			text = text + " сломал линк " + PortalLink(e.Portal1) + " <-> " + PortalLink(e.Portal2)
-		}
-		if (e.ObjectType == "field") {
-			text = text + " сломал поле @" + PortalLink(e.Portal1) + " -" + e.Extra + "MUs"
-		}
-	}
-	//text = text + " в " + e.Date.Format("18:04")
-	return text
-}
-
-func PortalLink(e model.PortalEntity) string {
-	// 59.409593,56.792797&z=17&pll=59.409593,56.792797
-	var text string = "<a href=\"https://www.ingress.com/intel?ll=" + FloatToString(e.LatE6/1000000) + "," + FloatToString(e.LngE6/1000000) + "&z=16&pll=" + FloatToString(e.LatE6/1000000) + "," + FloatToString(e.LngE6/1000000) +"\">" + e.Name + "</a>"
-	return text
-}
-
-func FloatToString(input_num float64) string {
-	// to convert a float number to a string
-	return strconv.FormatFloat(input_num, 'f', 6, 64)
 }

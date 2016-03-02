@@ -31,6 +31,7 @@ func main() {
 	} else {
 		db = db_init
 	}
+	db.LogMode(true)
 
 	// Telegram init
 	if tg_init, tg_err := telebot.NewBot(config.TelegramAPI); tg_err != nil {
@@ -56,7 +57,11 @@ func srv_bot() {
 		} else {
 			cmd = strings.ToLower(message.Text)
 		}
-		if cmd == "/whoi" {
+
+		if message.Text == "/cancel" {
+			actions[thash] = ""
+			tgbot.SendMessage(message.Chat, "Команда отменена", nil)
+		} else if cmd == "/whoi" {
 			tgbot.SendMessage(message.Chat,
 				"Hello, "+message.Sender.FirstName+"! ChatID: " + strconv.FormatInt(message.Chat.ID, 10) + "(" + message.Chat.Type + ")",
 				nil)
@@ -72,12 +77,14 @@ func srv_bot() {
 				player = re2.ReplaceAllString(player, "")
 				var entity model.ActionEntity
 				res := db.Where("player ilike ?", player).Order("date desc").Limit(1).First(&entity)
+				json.Unmarshal(entity.P1Data, &entity.Portal1)
+				json.Unmarshal(entity.P2Data, &entity.Portal2)
 				if res.RecordNotFound() == true {
 					tgbot.SendMessage(message.Chat, "Я не знаю где "+player,nil)
 				} else {
 					tgbot.SendMessage(message.Chat,
-						entity.Player + " " + entity.Action + " " + entity.ObjectType + " " + timeago.Russian.Format(entity.Date) + ".",
-						nil)
+						model.ActionToText(entity) + " " + timeago.Russian.Format(entity.Date) + ".",
+						&telebot.SendOptions{ParseMode: telebot.ModeMarkdown, DisableWebPagePreview: true})
 				}
 				actions[thash] = ""
 			}
@@ -98,21 +105,23 @@ func srv_bot() {
 				} else {
 					var tgmsg string
 					for _, e := range entity {
-						tgmsg = tgmsg + e.Player + " " + e.Action + " " + e.ObjectType + " " + timeago.Russian.Format(e.Date) + ".\n"
+						json.Unmarshal(e.P1Data, &e.Portal1)
+						json.Unmarshal(e.P2Data, &e.Portal2)
+						tgmsg = tgmsg + model.ActionToText(e) + " " + timeago.Russian.Format(e.Date) + ".\n"
 					}
-					tgbot.SendMessage(message.Chat,	tgmsg,nil)
+					tgbot.SendMessage(message.Chat,	tgmsg,&telebot.SendOptions{ParseMode: telebot.ModeMarkdown, DisableWebPagePreview: true})
 				}
 				actions[thash] = ""
 			}
 		} else if (strings.HasPrefix(cmd, "/subs") || strings.HasPrefix(strings.ToLower(cmd), "бот подписки")) {
-			var subs []model.Follower
+			var subs []model.Subscription
 			db.Where("fid = ? and ftype = ?", message.Chat.ID, message.Chat.Type).Order("fval desc").Find(&subs)
 			if len(subs) == 0 {
 				tgbot.SendMessage(message.Chat, "У вас нет подписок :(",nil)
 			} else {
 				var tgmsg string
 				for _, e := range subs {
-					tgmsg = tgmsg + strconv.FormatInt(e.Id, 10) + ": %" + e.Fval+ "\n"
+					tgmsg = tgmsg + strconv.FormatInt(e.Id, 10) + ": %" + e.Value+ "\n"
 				}
 				tgbot.SendMessage(message.Chat,	tgmsg,nil)
 			}
@@ -126,12 +135,12 @@ func srv_bot() {
 			} else {
 				var region string = w[0]
 				region = re2.ReplaceAllString(region, "")
-				follow := model.Follower{Fid: message.Chat.ID, Ftype: message.Chat.Type, Fval: region}
+				follow := model.Subscription{Tg_id: message.Chat.ID, Tg_type: message.Chat.Type, Value: region}
 				err := db.Create(&follow)
 				if err.Error != nil {
 					tgbot.SendMessage(message.Chat, "Произошла какая-то фигня, и я не подписал вас на регион о_О",nil)
 				} else {
-					var tgmsg string = "Теперь я слежу за происходящим в " + follow.Fval
+					var tgmsg string = "Теперь я слежу за происходящим в " + follow.Value
 					tgbot.SendMessage(message.Chat,	tgmsg, nil)
 				}
 				actions[thash] = ""
@@ -146,7 +155,7 @@ func srv_bot() {
 			} else {
 				var sub int64
 				sub, _ = strconv.ParseInt(w[0], 10, 64)
-				var follow model.Follower
+				var follow model.Subscription
 				res := db.Where("id = ? and fid = ? and ftype = ?", sub, message.Chat.ID, message.Chat.Type).Limit(1).First(&follow)
 				if res.RecordNotFound() == true {
 					tgbot.SendMessage(message.Chat, "Я не вижу подписку с таким номером \"" + w[0] + "\". Узнайте ваши подписки командой /subs.",nil)

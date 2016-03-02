@@ -1,0 +1,30 @@
+Команды бота:
+/where @<player> - вывод последнего действия игрока с координатами
+/log <obj> <length> - вывод последних <20> действий игрока
+/subs - вывод подписок пользователя
+/sub <obj> <params>
+/unsub <subid> - отписка
+
+Объекты<obj> для бота:
+    @<player> - наблюдение за игроком
+    $<portal name>:<region hash> - наблюдение за порталом
+    %<region name> - наблюдение за регионом
+
+Действия для подписки:
+actions: - действия логируемые парсером
+    destroy.resonator
+    destroy.link.<len>
+    destroy.field.<mus>
+    // destroy.portal -> neutralized TODO
+    create.resonator
+    create.link.<len>
+    create.field.<mus>
+    create.fracker
+    captured.portal
+portal: - действия проверяемые геоботом
+    level.<7> - достижение уровня
+    health.<%> - снижение здоровья до <%>
+    mod.sh(rsh,vrsh,axa) - установка щита
+    mod.mh(rmh,vrmh) - установка
+    mod.hs(rhs,vrhs)
+    mod.turrel
